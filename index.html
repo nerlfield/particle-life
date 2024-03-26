@@ -35,14 +35,14 @@
         // Constants and Parameters
         const params = {
             NUM_CLASSES: 3,
-            NUM_PARTICLES: 1000,
+            NUM_PARTICLES: Math.max(100, Math.floor(window.innerWidth * window.innerHeight / 50000)),
             PARTICLE_SIZE: 2,
-            MAX_RADIUS: 100,
+            MAX_RADIUS: Math.max(50, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 20)),
             FRICTION: 0.9,
             DELTA_T: 0.1,
             FORCE_SCALE: 20,
             BETA: 0.3,
-            MAX_CONNECTIONS: 100
+            MAX_CONNECTIONS: Math.max(10, Math.floor(window.innerWidth * window.innerHeight / 100000))
         };
         const WIDTH = window.innerWidth;
         const HEIGHT = window.innerHeight;
@@ -149,6 +149,7 @@
         gui.add(params, 'FORCE_SCALE', 1, 40).step(1);
         gui.add(params, 'BETA', 0.1, 1).step(0.1);
         gui.add(params, 'MAX_CONNECTIONS', 1, 200).step(1);
+        gui.close();
 
         // Attraction matrix GUI
         let attractionMatrixFolder = gui.addFolder('Attraction Matrix');
@@ -171,7 +172,7 @@
             }
         }
         updateAttractionMatrixGUI();
-        attractionMatrixFolder.open();
+        //attractionMatrixFolder.open();
 
         // Force function
         function forceFunction(distance, attractionFactor) {
