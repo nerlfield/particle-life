@@ -35,14 +35,14 @@
         // Constants and Parameters
         const params = {
             NUM_CLASSES: 3,
-            NUM_PARTICLES: Math.max(100, Math.floor(window.innerWidth * window.innerHeight / 50000)),
+            NUM_PARTICLES: Math.max(100, Math.floor(window.innerWidth * window.innerHeight / 2000)),
             PARTICLE_SIZE: 2,
             MAX_RADIUS: Math.max(50, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 20)),
             FRICTION: 0.9,
             DELTA_T: 0.1,
             FORCE_SCALE: 20,
             BETA: 0.3,
-            MAX_CONNECTIONS: Math.max(10, Math.floor(window.innerWidth * window.innerHeight / 100000))
+            MAX_CONNECTIONS: Math.max(10, Math.floor(window.innerWidth * window.innerHeight / 20000))
         };
         const WIDTH = window.innerWidth;
         const HEIGHT = window.innerHeight;
