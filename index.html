@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Particle Life Simulation 2D with Evolution</title>
+    <title>Particle Life Simulation 2D</title>
     <style>
         body { margin: 0; }
         canvas { 
@@ -15,8 +15,8 @@
 </head>
 <body>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dat.gui/build/dat.gui.min.js"></script>
     <script>
-        // Particle Life Simulation in 2D with Evolution
         const scene = new THREE.Scene();
         const camera = new THREE.OrthographicCamera(
             window.innerWidth / -2, 
@@ -33,65 +33,152 @@
         document.body.appendChild(renderer.domElement);
 
         // Constants and Parameters
-        const C = 5;
-        const NUM_PARTICLES = 500;
-        const PARTICLE_SIZE = 2;
-        const MAX_RADIUS = 100;
-        const FRICTION = 0.9;
-        const DELTA_T = 0.1;
-        const FORCE_SCALE = 20;
-        const BETA = 0.3;
-        const NUM_PARTICLES_PER_CLASS = NUM_PARTICLES / C;
+        const params = {
+            NUM_CLASSES: 3,
+            NUM_PARTICLES: 1000,
+            PARTICLE_SIZE: 2,
+            MAX_RADIUS: 100,
+            FRICTION: 0.9,
+            DELTA_T: 0.1,
+            FORCE_SCALE: 20,
+            BETA: 0.3,
+            MAX_CONNECTIONS: 100
+        };
         const WIDTH = window.innerWidth;
         const HEIGHT = window.innerHeight;
-        const EVOLUTION_RATE = 0.001; // New constant for evolution rate
+        let mousePressed = false;
+        let mousePosition = new THREE.Vector2();
 
         // Particle properties
         let particles = [];
         let velocities = [];
         let particleClasses = [];
-        let attractionMatrix = [
-            [0.7686519671738457, -0.29423739324973575, -0.21147874290451263, -0.38564576198732325, 0.6342120127543125],
-            [0.5119632166124339, -0.4507292891673629, 0.934616908806774, -0.5891464897666832, 0.4540933306871655],
-            [0.49801497274826456, 0.29587903664675475, -0.29230493218203835, -0.2770172024599846, -0.4647096967270792],
-            [0.14202583780292954, 0.4628072805523433, 0.14387005146594012, 0.2919017188616553, 0.6952514497487527],
-            [0.4324964983271071, -0.517354411631131, 0.6553107141303762, -0.6470635504988609, 0.0007563818527760446]
-        ]; // Use provided attraction matrix instead of random initialization
-
-        // Initialize particles, velocities, and assign classes
-        for (let i = 0; i < NUM_PARTICLES; i++) {
-            particles.push(new THREE.Vector2(
-                (Math.random() * 2 - 1) * WIDTH / 2,
-                (Math.random() * 2 - 1) * HEIGHT / 2
-            ));
-            velocities.push(new THREE.Vector2());
-            particleClasses.push(Math.floor(i / NUM_PARTICLES_PER_CLASS));
-        }
-
-        // Create particle geometry and material
-        const particleGeometry = new THREE.CircleGeometry(PARTICLE_SIZE, 16);
+        let attractionMatrix = [];
+        const particleGeometry = new THREE.CircleGeometry(params.PARTICLE_SIZE, 16);
         const particleMaterials = [];
+        const particleMeshes = [];
 
-        // Initialize materials for different classes
-        for (let i = 0; i < C; i++) {
-            particleMaterials.push(new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff }));
+        attractionMatrix = [
+            [ 0,  1, -1],
+            [ 1,  0,  1],
+            [-1,  1,  0]
+        ]
+
+        let isResetting = false;
+        function resetState() {
+            isResetting = true;
+            particles.length = 0;
+            velocities.length = 0;
+            particleClasses.length = 0;
+            attractionMatrix.length = 0;
+            particleMaterials.length = 0;
+            particleMeshes.forEach(mesh => scene.remove(mesh));
+            particleMeshes.length = 0;
+            isResetting = false;
         }
 
-        // Create particle meshes and add to scene
-        let particleMeshes = particles.map((p, index) => {
-            let material = particleMaterials[particleClasses[index]];
-            let mesh = new THREE.Mesh(particleGeometry, material);
-            mesh.position.set(p.x, p.y, 0);
-            scene.add(mesh);
-            return mesh;
+        function initParticles() {
+            particles = [];
+            velocities = [];
+            particleClasses = [];
+            for (let i = 0; i < params.NUM_PARTICLES; i++) {
+                particles.push(new THREE.Vector2(
+                    (Math.random() * 2 - 1) * WIDTH / 2,
+                    (Math.random() * 2 - 1) * HEIGHT / 2
+                ));
+                velocities.push(new THREE.Vector2());
+                particleClasses.push(Math.floor(i / (params.NUM_PARTICLES / params.NUM_CLASSES)));
+            }
+        }
+        initParticles();
+
+        function createParticleMeshes() {
+            particleMaterials.length = 0;
+            particleMeshes.forEach(mesh => scene.remove(mesh));
+            particleMeshes.length = 0;
+
+            for (let i = 0; i < params.NUM_CLASSES; i++) {
+                particleMaterials.push(new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff }));
+            }
+
+            particles.forEach((p, index) => {
+                let material = particleMaterials[particleClasses[index]];
+                let mesh = new THREE.Mesh(particleGeometry, material);
+                mesh.position.set(p.x, p.y, 0);
+                scene.add(mesh);
+                particleMeshes.push(mesh);
+            });
+        }
+        createParticleMeshes();
+
+        function generateAttractionMatrix() {
+            attractionMatrix = [];
+            for (let i = 0; i < params.NUM_CLASSES; i++) {
+                let row = [];
+                for (let j = 0; j < params.NUM_CLASSES; j++) {
+                    // Create a snake pattern: particles of class i are attracted to class i+1
+                    if (j === (i + 1) % params.NUM_CLASSES) {
+                        row.push(1); // Attraction to the next class
+                    } else {
+                        row.push(0); // No interaction or repulsion for simplicity
+                    }
+                }
+                attractionMatrix.push(row);
+            }
+        }
+        //generateAttractionMatrix();
+
+        // GUI controls
+        const gui = new dat.GUI();
+        gui.add(params, 'NUM_PARTICLES', 100, 2000).step(100).onChange(() => {
+            resetState();
+            generateAttractionMatrix();
+            initParticles();
+            createParticleMeshes();
         });
+        gui.add(params, 'NUM_CLASSES', 1, 5).step(1).onChange(() => {
+            resetState();
+            generateAttractionMatrix();
+            initParticles();
+            createParticleMeshes();
+            updateAttractionMatrixGUI();
+        });
+        gui.add(params, 'MAX_RADIUS', 10, 200).step(10);
+        gui.add(params, 'FRICTION', 0.1, 0.99).step(0.01);
+        gui.add(params, 'DELTA_T', 0.01, 0.2).step(0.01);
+        gui.add(params, 'FORCE_SCALE', 1, 40).step(1);
+        gui.add(params, 'BETA', 0.1, 1).step(0.1);
+        gui.add(params, 'MAX_CONNECTIONS', 1, 200).step(1);
+
+        // Attraction matrix GUI
+        let attractionMatrixFolder = gui.addFolder('Attraction Matrix');
+        function updateAttractionMatrixGUI() {
+            if (attractionMatrixFolder && attractionMatrixFolder.__controllers) {
+                // Remove each controller from the folder
+                while (attractionMatrixFolder.__controllers.length > 0) {
+                    attractionMatrixFolder.remove(attractionMatrixFolder.__controllers[0]);
+                }
+            }
+            attractionMatrixFolder.domElement.style.display = 'block';
+            for (let i = 0; i < params.NUM_CLASSES; i++) {
+                for (let j = 0; j < params.NUM_CLASSES; j++) {
+                    let controller = attractionMatrixFolder.add(attractionMatrix[i], j, -1, 1).step(0.1).name(`Class ${i} to ${j}`);
+                    controller.onChange(value => {
+                        attractionMatrix[i][j] = value;
+                        attractionMatrix[j][i] = value; // Make the matrix symmetric
+                    });
+                }
+            }
+        }
+        updateAttractionMatrixGUI();
+        attractionMatrixFolder.open();
 
         // Force function
         function forceFunction(distance, attractionFactor) {
-            if (distance < BETA) {
+            if (distance < params.BETA) {
                 return -1;
             } else {
-                return (distance - BETA) * attractionFactor;
+                return (distance - params.BETA) * attractionFactor;
             }
         }
 
@@ -109,11 +196,13 @@
             }
         }
 
-        // Adjusted force calculation with wrap around
+        // Adjusted force calculation with wrap around and limited connections
         function calculateForces(particleIndex) {
             let acceleration = new THREE.Vector2();
+            
             let p1 = particles[particleIndex];
-            for (let j = 0; j < NUM_PARTICLES; j++) {
+            let distances = [];
+            for (let j = 0; j < params.NUM_PARTICLES; j++) {
                 if (particleIndex !== j) {
                     let p2 = particles[j];
                     let direction = p2.clone().sub(p1);
@@ -126,91 +215,79 @@
                         direction.y -= Math.sign(direction.y) * HEIGHT;
                     }
                     let distance = direction.length();
-                    if (distance < MAX_RADIUS) {
-                        direction.normalize();
-                        let classI = particleClasses[particleIndex];
-                        let classJ = particleClasses[j];
-                        let attractionFactor = attractionMatrix[classI][classJ];
-                        let forceMagnitude = forceFunction(distance / MAX_RADIUS, attractionFactor) * FORCE_SCALE;
-                        acceleration.add(direction.multiplyScalar(forceMagnitude));
+                    if (distance < params.MAX_RADIUS) {
+                        distances.push({ index: j, distance: distance, direction: direction });
                     }
+                }
+            }
+            // Sort by distance and limit to MAX_CONNECTIONS
+            distances.sort((a, b) => a.distance - b.distance);
+            distances = distances.slice(0, params.MAX_CONNECTIONS);
+            // Calculate force for limited connections
+            distances.forEach((info) => {
+                info.direction.normalize();
+                let classI = particleClasses[particleIndex];
+                let classJ = particleClasses[info.index];
+                let attractionFactor = attractionMatrix[classI][classJ];
+                let forceMagnitude = forceFunction(info.distance / params.MAX_RADIUS, attractionFactor) * params.FORCE_SCALE;
+                acceleration.add(info.direction.multiplyScalar(forceMagnitude));
+            });
+            // Magnetic force towards cursor when mouse is pressed
+            if (mousePressed) {
+                let directionToMouse = mousePosition.clone().sub(p1);
+                let distanceToMouse = directionToMouse.length();
+                if (distanceToMouse < params.MAX_RADIUS) {
+                    let magneticForceMagnitude = params.FORCE_SCALE * (1 - Math.pow(distanceToMouse / params.MAX_RADIUS, 2)); // Non-linear magnetic force
+                    directionToMouse.normalize().multiplyScalar(magneticForceMagnitude);
+                    acceleration.add(directionToMouse);
                 }
             }
             return acceleration;
         }
 
-        // Evolution function
-        function evolveAttractionMatrix() {
-            for (let i = 0; i < C; i++) {
-                for (let j = 0; j < C; j++) {
-                    // Evolve the attraction factors slightly over time
-                    attractionMatrix[i][j] += (Math.random() * 2 - 1) * EVOLUTION_RATE;
-                }
+        // Mouse event listeners
+        document.addEventListener('mousedown', function(event) {
+            if (event.button === 0) { // Left mouse button
+                mousePressed = true;
+                mousePosition.set(
+                    event.clientX - window.innerWidth / 2,
+                    -event.clientY + window.innerHeight / 2
+                );
             }
-        }
+        });
 
-        let classStability = new Array(C).fill(0);
+        document.addEventListener('mouseup', function(event) {
+            if (event.button === 0) { // Left mouse button
+                mousePressed = false;
+            }
+        });
 
-        // Function to update class stability based on variance of distances
-        function updateClassStability() {
-            let classDistances = new Array(C).fill(0).map(() => []);
-            // Calculate distances between particles of the same class
-            for (let i = 0; i < NUM_PARTICLES; i++) {
-                for (let j = i + 1; j < NUM_PARTICLES; j++) {
-                    if (particleClasses[i] === particleClasses[j]) {
-                        let distance = particles[i].distanceTo(particles[j]);
-                        classDistances[particleClasses[i]].push(distance);
-                    }
-                }
+        document.addEventListener('mousemove', function(event) {
+            if (mousePressed) {
+                mousePosition.set(
+                    event.clientX - window.innerWidth / 2,
+                    -event.clientY + window.innerHeight / 2
+                );
             }
-            // Update stability based on variance
-            for (let i = 0; i < C; i++) {
-                let distances = classDistances[i];
-                if (distances.length > 1) {
-                    let mean = distances.reduce((a, b) => a + b, 0) / distances.length;
-                    let variance = distances.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / distances.length;
-                    // Stability could be inversely proportional to variance
-                    classStability[i] = 1 / (1 + variance);
-                } else {
-                    classStability[i] = 1; // Assign maximum stability if there's only one particle or none
-                }
-            }
-        }
-
-        // Evolution of particles
-        function evolveParticles() {
-            updateClassStability(); // Update stability scores
-            for (let i = 0; i < NUM_PARTICLES; i++) {
-                let particleClass = particleClasses[i];
-                // Use stability score to influence evolution
-                let evolutionFactor = (Math.random() * 2 - 1) * EVOLUTION_RATE * classStability[particleClass];
-                // Apply evolution to particle size
-                particleMeshes[i].scale.multiplyScalar(1 + evolutionFactor);
-                // Change particle color based on class and evolution
-                let colorChange = (1 + evolutionFactor) * 0xffffff;
-                particleMaterials[particleClass].color.setHex(particleMaterials[particleClass].color.getHex() + colorChange);
-            }
-        }
+        });
 
         // Animation loop
         function animate() {
             requestAnimationFrame(animate);
-        
-            // Update velocities and positions
-            for (let i = 0; i < NUM_PARTICLES; i++) {
-                let acceleration = calculateForces(i);
-                velocities[i].multiplyScalar(FRICTION).add(acceleration.multiplyScalar(DELTA_T));
-                particles[i].add(velocities[i].clone().multiplyScalar(DELTA_T));
-                wrapPosition(particles[i]);
-                particleMeshes[i].position.set(particles[i].x, particles[i].y, 0);
+            
+            if (!isResetting) {
+                // Update velocities and positions
+                for (let i = 0; i < params.NUM_PARTICLES; i++) {
+                    let acceleration = calculateForces(i);
+                    velocities[i].multiplyScalar(params.FRICTION).add(acceleration.multiplyScalar(params.DELTA_T));
+                    particles[i].add(velocities[i].clone().multiplyScalar(params.DELTA_T));
+                    wrapPosition(particles[i]);
+                    particleMeshes[i].position.set(particles[i].x, particles[i].y, 0);
+                }
+            
+                // Render the scene
+                renderer.render(scene, camera);
             }
-
-            // Evolve the attraction matrix and particles
-            evolveAttractionMatrix();
-            evolveParticles();
-        
-            // Render the scene
-            renderer.render(scene, camera);
         }
         
         // Start the animation loop
